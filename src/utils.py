@@ -24,10 +24,6 @@ def beep(freq, duration):
     elif platform == "win32":
         winsound.Beep(freq, duration)
     else:
-        # install sox on linux. Tested.
-        for i in range(5):
-            os.system('play -q -n synth 0.1 sin 880 || echo -e "\a"')
-            time.sleep(2)
         print("JEEEELOOOO!!!")
 
 
@@ -187,19 +183,31 @@ def check_and_book(request_header, beneficiary_dtls, district_dtls, **kwargs):
 def ask_and_book(options, request_header, beneficiary_dtls, **kwargs):
     minimum_slots = kwargs['min_slots']
     refresh_freq = kwargs['ref_freq']
+    center = kwargs['center']
     vaccine_type = [beneficiary['vaccine'] for beneficiary in beneficiary_dtls][0]
     tmp_options = copy.deepcopy(options)
+    center_available = False
+    center_index = 0
     if len(tmp_options) > 0:
         cleaned_options_for_display = []
+        i = 0
         for item in tmp_options:
+            if center in item['center_id']:
+                center_available = True
+                center_index = i
             item.pop('session_id', None)
             item.pop('center_id', None)
             cleaned_options_for_display.append(item)
+            i += 1
 
         display_table(cleaned_options_for_display)
-        choice = inputimeout(
-            prompt='----------> Wait 20 seconds for updated options OR \n----------> Enter a choice e.g: 1.4 for (1st center 4th slot): ',
-            timeout=20)
+
+        if not center_available:
+            choice = inputimeout(
+                prompt='----------> Wait 20 seconds for updated options OR \n----------> Enter a choice e.g: 1.4 for (1st center 4th slot): ',
+                timeout=20)
+        else:
+            choice = "auto"
 
     else:
         for i in range(refresh_freq, 0, -1):
@@ -209,29 +217,43 @@ def ask_and_book(options, request_header, beneficiary_dtls, **kwargs):
             time.sleep(1)
         choice = '.'
 
+    return_val = False
     if choice == '.':
-        return True
+        return_val = True
+    elif choice == "auto":
+        for slot in range(4, 0, -1):
+            if _book("{}.{}".format(center_index, slot), beneficiary_dtls, vaccine_type, options, request_header):
+                print("Booked {}.{}".format(center_index, slot))
+                return_val = True
+                break
+            else:
+                print("Couldn't Book {}.{}".format(center_index, slot))
     else:
-        try:
-            choice = choice.split('.')
-            choice = [int(item) for item in choice]
-            print(f'============> Got Choice: Center #{choice[0]}, Slot #{choice[1]}')
+        return_val = _book(choice, beneficiary_dtls, vaccine_type, options, request_header)
+    return return_val
 
-            new_req = {
-                'beneficiaries': [beneficiary['beneficiary_reference_id'] for beneficiary in beneficiary_dtls],
-                'dose': 2 if vaccine_type else 1,
-                'center_id': options[choice[0] - 1]['center_id'],
-                'session_id': options[choice[0] - 1]['session_id'],
-                'slot': options[choice[0] - 1]['slots'][choice[1] - 1]
-            }
 
-            print(f'Booking with info: {new_req}')
-            return book_appointment(request_header, new_req)
+def _book(choice, beneficiary_dtls, vaccine_type, options, request_header):
+    try:
+        choice = choice.split('.')
+        choice = [int(item) for item in choice]
+        print(f'============> Got Choice: Center #{choice[0]}, Slot #{choice[1]}')
 
-        except IndexError:
-            print("============> Invalid Option!")
-            os.system("pause")
-            pass
+        new_req = {
+            'beneficiaries': [beneficiary['beneficiary_reference_id'] for beneficiary in beneficiary_dtls],
+            'dose': 2 if vaccine_type else 1,
+            'center_id': options[choice[0] - 1]['center_id'],
+            'session_id': options[choice[0] - 1]['session_id'],
+            'slot': options[choice[0] - 1]['slots'][choice[1] - 1]
+        }
+
+        print(f'Booking with info: {new_req}')
+        return book_appointment(request_header, new_req)
+
+    except IndexError:
+        print("============> Invalid Option!")
+        os.system("pause")
+        pass
 
 
 def book_by_pincode(pincode, request_header, beneficiary_dtls, **kwargs):
@@ -248,7 +270,7 @@ def book_by_pincode(pincode, request_header, beneficiary_dtls, **kwargs):
     else:
         print(find_by_pin_response.json())
         return False
-        
+
     min_age_booking = get_min_age(beneficiary_dtls)
     minimum_slots = kwargs['min_slots']
     options = parse_calender_response(resp, minimum_slots, min_age_booking)
