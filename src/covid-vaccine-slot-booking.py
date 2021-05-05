@@ -40,11 +40,11 @@ def main():
         # Collect vaccination center preferance
         district_dtls = get_districts()
 
-
         print("================================= Additional Info =================================")
 
         # Set filter condition
-        minimum_slots = int(input(f'Filter out centers with availability less than ? Minimum {len(beneficiary_dtls)} : '))
+        minimum_slots = int(
+            input(f'Filter out centers with availability less than ? Minimum {len(beneficiary_dtls)} : '))
         minimum_slots = minimum_slots if minimum_slots >= len(beneficiary_dtls) else len(beneficiary_dtls)
 
         # Get refresh frequency
@@ -60,16 +60,25 @@ def main():
             print("invalid pincode, going by districts")
             pass
 
+        center = None
+        try:
+            center = input(f'looking for a particular center: ')
+        except:
+            print("invalid center")
+            pass
+
         while token_valid:
             request_header = {"Authorization": f"Bearer {token}"}
 
             if pincode:
                 token_valid = book_by_pincode(pincode, request_header, beneficiary_dtls,
-                                             min_slots=minimum_slots,
-                                             ref_freq=refresh_freq)
+                                              center=center,
+                                              min_slots=minimum_slots,
+                                              ref_freq=refresh_freq)
             else:
                 # call function to check and book slots
                 token_valid = check_and_book(request_header, beneficiary_dtls, district_dtls,
+                                             center=center,
                                              min_slots=minimum_slots,
                                              ref_freq=refresh_freq)
 
