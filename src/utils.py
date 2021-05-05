@@ -24,6 +24,10 @@ def beep(freq, duration):
     elif platform == "win32":
         winsound.Beep(freq, duration)
     else:
+        # install sox on linux. Tested.
+        for i in range(5):
+            os.system('play -q -n synth 0.1 sin 880 || echo -e "\a"')
+            time.sleep(2)
         print("JEEEELOOOO!!!")
 
 
