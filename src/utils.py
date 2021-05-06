@@ -274,7 +274,7 @@ def book_by_pincode(pincode, request_header, beneficiary_dtls, **kwargs):
     base_url = 'https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByPin?pincode={0}&date={1}'
     tomorrow = _get_tomorrow()
     target_url = base_url.format(pincode, tomorrow)
-    find_by_pin_response = requests.get(target_url, , headers=xx_request_header)
+    find_by_pin_response = requests.get(target_url, headers=xx_request_header)
     if find_by_pin_response.status_code == 200:
         resp = find_by_pin_response.json()
     else:
