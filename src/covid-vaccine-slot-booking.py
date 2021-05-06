@@ -2,6 +2,7 @@ from collections import Counter
 import requests, sys, argparse, os, traceback
 from utils import generate_token_OTP, get_beneficiaries, check_and_book, get_districts, get_min_age, beep, \
     BENEFICIARIES_URL, WARNING_BEEP_DURATION, book_by_pincode
+import copy
 
 
 def main():
