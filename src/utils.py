@@ -8,6 +8,10 @@ BENEFICIARIES_URL = "https://cdn-api.co-vin.in/api/v2/appointment/beneficiaries"
 CALENDAR_URL = "https://cdn-api.co-vin.in/api/v2/appointment/sessions/calendarByDistrict?district_id={0}&date={1}"
 WARNING_BEEP_DURATION = (1000, 2000)
 
+xx_request_header = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'
+    }
+    
 try:
     import winsound
 
@@ -61,6 +65,7 @@ def check_calendar(request_header, vaccine_type, district_dtls, minimum_slots, m
 
         options = []
         for district in district_dtls:
+            request_header = xx_request_header.update(request_header)
             resp = requests.get(base_url.format(district['district_id'], tomorrow), headers=request_header)
 
             if resp.status_code == 401:
@@ -128,7 +133,8 @@ def book_appointment(request_header, details):
     """
     try:
         print('================================= ATTEMPTING BOOKING ==================================================')
-
+        
+        request_header = xx_request_header.update(request_header)
         resp = requests.post(BOOKING_URL, headers=request_header, json=details)
         print(f'Booking Response Code: {resp.status_code}')
         print(f'Booking Response : {resp.text}')
@@ -268,7 +274,7 @@ def book_by_pincode(pincode, request_header, beneficiary_dtls, **kwargs):
     base_url = 'https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByPin?pincode={0}&date={1}'
     tomorrow = _get_tomorrow()
     target_url = base_url.format(pincode, tomorrow)
-    find_by_pin_response = requests.get(target_url)
+    find_by_pin_response = requests.get(target_url, , headers=xx_request_header)
     if find_by_pin_response.status_code == 200:
         resp = find_by_pin_response.json()
     else:
@@ -288,7 +294,7 @@ def get_districts():
         2. Lists all districts in that state, prompts to select required ones, and
         3. Returns the list of districts as list(dict)
     """
-    states = requests.get('https://cdn-api.co-vin.in/api/v2/admin/location/states')
+    states = requests.get('https://cdn-api.co-vin.in/api/v2/admin/location/states', headers=xx_request_header )
 
     if states.status_code == 200:
         states = states.json()['states']
@@ -310,7 +316,7 @@ def get_districts():
         os.system("pause")
         sys.exit(1)
 
-    districts = requests.get(f'https://cdn-api.co-vin.in/api/v2/admin/location/districts/{state_id}')
+    districts = requests.get(f'https://cdn-api.co-vin.in/api/v2/admin/location/districts/{state_id}', headers=xx_request_header )
     if districts.status_code == 200:
         districts = districts.json()['districts']
 
@@ -347,6 +353,7 @@ def get_beneficiaries(request_header):
         2. Prompts user to select the applicable beneficiaries, and
         3. Returns the list of beneficiaries as list(dict)
     """
+    request_header = xx_request_header.update(request_header)
     beneficiaries = requests.get(BENEFICIARIES_URL, headers=request_header)
 
     if beneficiaries.status_code == 200:
