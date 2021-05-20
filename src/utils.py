@@ -2,16 +2,27 @@ from hashlib import sha256
 from inputimeout import inputimeout, TimeoutOccurred
 import tabulate, copy, time, datetime, requests, sys, os
 from sys import platform
+from captcha import captcha_builder
 
 BOOKING_URL = "https://cdn-api.co-vin.in/api/v2/appointment/schedule"
 BENEFICIARIES_URL = "https://cdn-api.co-vin.in/api/v2/appointment/beneficiaries"
 CALENDAR_URL = "https://cdn-api.co-vin.in/api/v2/appointment/sessions/calendarByDistrict?district_id={0}&date={1}"
+CAPTCHA_URL = "https://cdn-api.co-vin.in/api/v2/auth/getRecaptcha"
 WARNING_BEEP_DURATION = (1000, 2000)
 
-xx_request_header = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'
-    }
-    
+mandatory_request_header = {
+    "authority": "cdn-api.co-vin.in",
+    "accept": "application/json, text/plain, */*",
+    "accept-encoding": "gzip, deflate, br",
+    "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
+    "origin": "https://selfregistration.cowin.gov.in",
+    "referer": "https://selfregistration.cowin.gov.in/appointment",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "cross-site",
+    "Remote Address": "[2600:9000:213c:9400:6:3338:2bc0:93a1]:443",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36"
+}
 try:
     import winsound
 
@@ -28,10 +39,6 @@ def beep(freq, duration):
     elif platform == "win32":
         winsound.Beep(freq, duration)
     else:
-        # install sox on linux. Tested.
-        for i in range(5):
-            os.system('play -q -n synth 0.1 sin 880 || echo -e "\a"')
-            time.sleep(2)
         print("JEEEELOOOO!!!")
 
 
@@ -65,7 +72,7 @@ def check_calendar(request_header, vaccine_type, district_dtls, minimum_slots, m
 
         options = []
         for district in district_dtls:
-            request_header = xx_request_header.update(request_header)
+            request_header.update(mandatory_request_header)
             resp = requests.get(base_url.format(district['district_id'], tomorrow), headers=request_header)
 
             if resp.status_code == 401:
@@ -116,12 +123,19 @@ def parse_calender_response(resp, minimum_slots=1, min_age_booking=18):
                         'session_id': session['session_id']
                     }
                     options.append(out)
-
-                else:
-                    pass
+        print(options)
     else:
         pass
     return options
+
+def generate_captcha(request_header):
+    print('================================= GETTING CAPTCHA ==================================================')
+    resp = requests.post(CAPTCHA_URL, headers=request_header)
+    print(f'Captcha Response Code: {resp.status_code}')
+
+    if resp.status_code == 200:
+
+        return captcha_builder(resp.json())
 
 
 def book_appointment(request_header, details):
@@ -131,31 +145,33 @@ def book_appointment(request_header, details):
         2. Attempts to book an appointment using the details
         3. Returns True or False depending on Token Validity
     """
-    try:
-        print('================================= ATTEMPTING BOOKING ==================================================')
-        
-        request_header = xx_request_header.update(request_header)
-        resp = requests.post(BOOKING_URL, headers=request_header, json=details)
-        print(f'Booking Response Code: {resp.status_code}')
-        print(f'Booking Response : {resp.text}')
-
-        if resp.status_code == 401:
-            print('TOKEN INVALID')
-            return False
-
-        elif resp.status_code == 200:
+    valid_captcha = True
+    while valid_captcha:
+        try:
             beep(WARNING_BEEP_DURATION[0], WARNING_BEEP_DURATION[1])
-            print('##############    BOOKED!  ##############')
-            os.system("pause")
+            captcha = generate_captcha(request_header)
+            details['captcha'] = captcha
+            print('================================= ATTEMPTING BOOKING ==================================================')
+            request_header.update(mandatory_request_header)
+            resp = requests.post(BOOKING_URL, headers=request_header, json=details)
+            print(f'Booking Response Code: {resp.status_code}')
+            print(f'Booking Response : {resp.text}')
 
-        else:
-            print(f'Response: {resp.status_code} : {resp.text}')
-            os.system("pause")
-            return True
+            if resp.status_code == 401:
+                print('TOKEN INVALID')
+                return False
 
-    except Exception as e:
-        print(str(e))
-        beep(WARNING_BEEP_DURATION[0], WARNING_BEEP_DURATION[1])
+            elif resp.status_code == 200:
+                beep(WARNING_BEEP_DURATION[0], WARNING_BEEP_DURATION[1])
+                print('##############    BOOKED!  ##############')
+
+            else:
+                print(f'Response: {resp.status_code} : {resp.text}')
+                return True
+
+        except Exception as e:
+            print(str(e))
+            beep(WARNING_BEEP_DURATION[0], WARNING_BEEP_DURATION[1])
 
 
 def check_and_book(request_header, beneficiary_dtls, district_dtls, **kwargs):
@@ -202,7 +218,7 @@ def ask_and_book(options, request_header, beneficiary_dtls, **kwargs):
         cleaned_options_for_display = []
         i = 0
         for item in tmp_options:
-            if center in item['center_id']:
+            if center in item['name']:
                 center_available = True
                 center_index = i
             item.pop('session_id', None)
@@ -262,7 +278,6 @@ def _book(choice, beneficiary_dtls, vaccine_type, options, request_header):
 
     except IndexError:
         print("============> Invalid Option!")
-        os.system("pause")
         pass
 
 
@@ -271,15 +286,21 @@ def book_by_pincode(pincode, request_header, beneficiary_dtls, **kwargs):
     Bloody the system lists places in district which are far off from your place.
     Hence, the pincode search, gives you places in the vicinity of your house.
     """
-    base_url = 'https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByPin?pincode={0}&date={1}'
+    base_url = 'https://cdn-api.co-vin.in/api/v2/appointment/sessions/calendarByPin?pincode={0}&date={1}'
     tomorrow = _get_tomorrow()
     target_url = base_url.format(pincode, tomorrow)
-    find_by_pin_response = requests.get(target_url, headers=xx_request_header)
-    if find_by_pin_response.status_code == 200:
-        resp = find_by_pin_response.json()
-    else:
-        print(find_by_pin_response.json())
-        return False
+    request_header.update(mandatory_request_header)
+    got_response = False
+    find_by_pin_response = None
+    resp = None
+    while not got_response:
+        find_by_pin_response = requests.get(target_url, headers=request_header)
+        if find_by_pin_response.status_code == 200:
+            resp = find_by_pin_response.json()
+            got_response = True
+        else:
+            print(find_by_pin_response.json())
+            return False
 
     min_age_booking = get_min_age(beneficiary_dtls)
     minimum_slots = kwargs['min_slots']
@@ -294,7 +315,7 @@ def get_districts():
         2. Lists all districts in that state, prompts to select required ones, and
         3. Returns the list of districts as list(dict)
     """
-    states = requests.get('https://cdn-api.co-vin.in/api/v2/admin/location/states', headers=xx_request_header )
+    states = requests.get('https://cdn-api.co-vin.in/api/v2/admin/location/states', headers=mandatory_request_header)
 
     if states.status_code == 200:
         states = states.json()['states']
@@ -316,7 +337,8 @@ def get_districts():
         os.system("pause")
         sys.exit(1)
 
-    districts = requests.get(f'https://cdn-api.co-vin.in/api/v2/admin/location/districts/{state_id}', headers=xx_request_header )
+    districts = requests.get(f'https://cdn-api.co-vin.in/api/v2/admin/location/districts/{state_id}',
+                             headers=mandatory_request_header)
     if districts.status_code == 200:
         districts = districts.json()['districts']
 
@@ -353,7 +375,7 @@ def get_beneficiaries(request_header):
         2. Prompts user to select the applicable beneficiaries, and
         3. Returns the list of beneficiaries as list(dict)
     """
-    request_header = xx_request_header.update(request_header)
+    request_header.update(mandatory_request_header)
     beneficiaries = requests.get(BENEFICIARIES_URL, headers=request_header)
 
     if beneficiaries.status_code == 200:
@@ -413,14 +435,15 @@ def get_min_age(beneficiary_dtls):
     return min_age
 
 
-def generate_token_OTP(mobile, request_header):
+def generate_token_OTP(mobile):
     """
     This function generate OTP and returns a new token
     """
     data = {"mobile": mobile,
-            "secret": "U2FsdGVkX1+b2/jGHLoV5kD4lpHdQ/CI7p3TnigA+6ukck6gSGrAR9aAuWeN/Nod9RrY4RaREfPITQfnqgCI6Q=="}
+            "secret": "U2FsdGVkX1/3I5UgN1RozGJtexc1kfsaCKPadSux9LY+cVUADlIDuKn0wCN+Y8iB4ceu6gFxNQ5cCfjm1BsmRQ=="}
     print(f"Requesting OTP with mobile number {mobile}..")
-    txnId = requests.post(url='https://cdn-api.co-vin.in/api/v2/auth/generateMobileOTP', json=data, headers=request_header)
+    txnId = requests.post(url='https://cdn-api.co-vin.in/api/v2/auth/generateMobileOTP', json=data,
+                          headers=mandatory_request_header)
 
     if txnId.status_code == 200:
         txnId = txnId.json()['txnId']
@@ -433,7 +456,8 @@ def generate_token_OTP(mobile, request_header):
     data = {"otp": sha256(str(OTP).encode('utf-8')).hexdigest(), "txnId": txnId}
     print(f"Validating OTP..")
 
-    token = requests.post(url='https://cdn-api.co-vin.in/api/v2/auth/validateMobileOtp', json=data)
+    token = requests.post(url='https://cdn-api.co-vin.in/api/v2/auth/validateMobileOtp', json=data,
+                          headers=mandatory_request_header)
     if token.status_code == 200:
         token = token.json()['token']
     else:
