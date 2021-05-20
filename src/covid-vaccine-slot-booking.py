@@ -2,7 +2,6 @@ from collections import Counter
 import requests, sys, argparse, os, traceback
 from utils import generate_token_OTP, get_beneficiaries, check_and_book, get_districts, get_min_age, beep, \
     BENEFICIARIES_URL, WARNING_BEEP_DURATION, book_by_pincode
-import copy
 
 
 def main():
@@ -11,18 +10,13 @@ def main():
     args = parser.parse_args()
 
     mobile = None
-    base_request_header = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'
-        }
-
     try:
         if args.token:
             token = args.token
         else:
             mobile = input("Enter the registered mobile number: ")
-            token = generate_token_OTP(mobile, base_request_header)
-            
-        request_header = copy.deepcopy(base_request_header)
+            token = generate_token_OTP(mobile)
+
         request_header = {"Authorization": f"Bearer {token}"}
 
         # Get Beneficiaries
