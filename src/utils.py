@@ -4,6 +4,8 @@ import tabulate, copy, time, datetime, requests, sys, os
 from sys import platform
 from captcha import captcha_builder
 
+# 9896698975
+
 BOOKING_URL = "https://cdn-api.co-vin.in/api/v2/appointment/schedule"
 BENEFICIARIES_URL = "https://cdn-api.co-vin.in/api/v2/appointment/beneficiaries"
 CALENDAR_URL = "https://cdn-api.co-vin.in/api/v2/appointment/sessions/calendarByDistrict?district_id={0}&date={1}"
@@ -54,7 +56,7 @@ def display_table(dict_list):
     print(tabulate.tabulate(rows, header, tablefmt='grid'))
 
 
-def check_calendar(request_header, vaccine_type, district_dtls, minimum_slots, min_age_booking):
+def check_calendar(request_header, vaccine_type, district_dtls, minimum_slots, min_age_booking, dose=1):
     """
     This function
         1. Takes details required to check vaccination calendar
@@ -81,16 +83,9 @@ def check_calendar(request_header, vaccine_type, district_dtls, minimum_slots, m
 
             elif resp.status_code == 200:
                 resp = resp.json()
-                options.extend(parse_calender_response(resp, minimum_slots, min_age_booking))
+                options.extend(parse_calender_response(resp, minimum_slots, min_age_booking, dose))
             else:
                 pass
-
-        for dist in set([item['district'] for item in options]):
-            for district in district_dtls:
-                if dist == district['district_name']:
-                    for _ in range(2):
-                        # beep twice for each district with a slot
-                        beep(district['district_alert_freq'], 150)
 
         return options
 
@@ -104,14 +99,15 @@ def _get_tomorrow():
     return (today + datetime.timedelta(days=1)).strftime("%d-%m-%Y")
 
 
-def parse_calender_response(resp, minimum_slots=1, min_age_booking=18):
+def parse_calender_response(resp, minimum_slots=1, min_age_booking=18, dose=1):
     print(
         f"Centers available from {_get_tomorrow()} as of {datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')}: {len(resp['centers'])}")
     options = []
+    dose_field = 'available_capacity_dose1' if dose==1 else 'available_capacity_dose2'
     if len(resp['centers']) >= 0:
         for center in resp['centers']:
             for session in center['sessions']:
-                if (session['available_capacity'] >= minimum_slots) \
+                if (session[dose_field] >= minimum_slots) \
                         and (session['min_age_limit'] <= min_age_booking):
                     out = {
                         'name': center['name'],
@@ -148,6 +144,7 @@ def book_appointment(request_header, details):
     valid_captcha = True
     while valid_captcha:
         try:
+            # beep(WARNING_BEEP_DURATION[0], WARNING_BEEP_DURATION[1])
             beep(WARNING_BEEP_DURATION[0], WARNING_BEEP_DURATION[1])
             captcha = generate_captcha(request_header)
             details['captcha'] = captcha
@@ -190,7 +187,7 @@ def check_and_book(request_header, beneficiary_dtls, district_dtls, **kwargs):
         minimum_slots = kwargs['min_slots']
         refresh_freq = kwargs['ref_freq']
 
-        options = check_calendar(request_header, vaccine_type, district_dtls, minimum_slots, min_age_booking)
+        options = check_calendar(request_header, vaccine_type, district_dtls, minimum_slots, min_age_booking, kwargs['dose'])
 
         if isinstance(options, bool):
             return False
@@ -247,13 +244,14 @@ def ask_and_book(options, request_header, beneficiary_dtls, **kwargs):
     if choice == '.':
         return_val = True
     elif choice == "auto":
-        for slot in range(4, 0, -1):
-            if _book("{}.{}".format(center_index, slot), beneficiary_dtls, vaccine_type, options, request_header):
-                print("Booked {}.{}".format(center_index, slot))
-                return_val = True
-                break
-            else:
-                print("Couldn't Book {}.{}".format(center_index, slot))
+        for center in range(1, center_index, 1):
+            for slot in range(4, 0, -1):
+                if _book("{}.{}".format(center, slot), beneficiary_dtls, vaccine_type, options, request_header):
+                    print("Booked {}.{}".format(center, slot))
+                    return_val = True
+                    break
+                else:
+                    print("Couldn't Book {}.{}".format(center, slot))
     else:
         return_val = _book(choice, beneficiary_dtls, vaccine_type, options, request_header)
     return return_val
@@ -304,7 +302,7 @@ def book_by_pincode(pincode, request_header, beneficiary_dtls, **kwargs):
 
     min_age_booking = get_min_age(beneficiary_dtls)
     minimum_slots = kwargs['min_slots']
-    options = parse_calender_response(resp, minimum_slots, min_age_booking)
+    options = parse_calender_response(resp, minimum_slots, min_age_booking, kwargs['dose'])
     return ask_and_book(options, request_header, beneficiary_dtls, **kwargs)
 
 
@@ -389,7 +387,8 @@ def get_beneficiaries(request_header):
                 'beneficiary_reference_id': beneficiary['beneficiary_reference_id'],
                 'name': beneficiary['name'],
                 'vaccine': beneficiary['vaccine'],
-                'age': beneficiary['age']
+                'age': beneficiary['age'],
+                'dose': 2 if (beneficiary['appointments'] and len(beneficiary['appointments'])>0) else 1
             }
             refined_beneficiaries.append(tmp)
 
