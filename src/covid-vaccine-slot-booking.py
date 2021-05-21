@@ -67,6 +67,13 @@ def main():
             print("invalid center")
             pass
 
+        dose = 1
+        try:
+            dose = int(input(f'Enter dose'))
+        except:
+            print("dose selected 1")
+            pass
+
         while token_valid:
             request_header = {"Authorization": f"Bearer {token}"}
 
@@ -74,13 +81,15 @@ def main():
                 token_valid = book_by_pincode(pincode, request_header, beneficiary_dtls,
                                               center=center,
                                               min_slots=minimum_slots,
-                                              ref_freq=refresh_freq)
+                                              ref_freq=refresh_freq,
+                                              dose=dose)
             else:
                 # call function to check and book slots
                 token_valid = check_and_book(request_header, beneficiary_dtls, district_dtls,
                                              center=center,
                                              min_slots=minimum_slots,
-                                             ref_freq=refresh_freq)
+                                             ref_freq=refresh_freq,
+                                             dose=dose)
 
             # check if token is still valid
             beneficiaries_list = requests.get(BENEFICIARIES_URL, headers=request_header)
